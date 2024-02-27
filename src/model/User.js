@@ -10,17 +10,10 @@ const userSchema = new Schema({
   toObject: { virtuals: true } // So `console.log()` and other functions that use `toObject()` include virtuals
 });
 
-userSchema.virtual('count', {
-  ref: 'Exercise',
-  localField: '_id',
-  foreignField: 'user',
-  count: true
-})
-
 userSchema.virtual('log', {
   ref: 'Exercise',
   localField: '_id',
-  foreignField: 'user'
+  foreignField: 'user_id'
 });
 
 module.exports = model('User', userSchema, 'User');

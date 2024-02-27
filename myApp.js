@@ -4,14 +4,43 @@ const UserModel = require('./src/model/User');
 const ExerciseModel = require('./src/model/Exercise');
 const { StatusCodes } = require('http-status-codes');
 
+const UserExerciseLogsDTO = require('./src/DTO/UserExerciseLogsDTO');
+const UserDTO = require('./src/DTO/UserDTO');
+const UserExerciseDTO = require('./src/DTO/UserExerciseDTO');
+
 const checkUserName = (req, res, next) => {
   const { username } = req.body;
   if (!username) {
-    res.status(StatusCodes.BAD_REQUEST).send({ error: 'Invalid username' });
+    res.status(StatusCodes.BAD_REQUEST).send({
+       error: 'Invalid username' 
+    });
     return
   }
   next();
 }
+
+const convertDateStringFormatToDate = (str) => {
+  const regex = /(^\d{4}-\d{2}-\d{2})$/g;
+  
+  if (!str) {
+    return null;
+  }
+  
+  const match = str.match(regex);
+  if (!match) return null;
+
+  return new Date(match[0]);
+}
+
+app.get('/delete', async (req, res) => {
+
+  const exerRes = await ExerciseModel.deleteMany();
+  const userRes = await UserModel.deleteMany();
+
+  res.send({
+    msg: `Deleted ${userRes.deletedCount} Users and ${exerRes.deletedCount} Exercises`
+  })
+})
 
 app.post('/api/users', checkUserName, (req, res) => {
   const userModel = new UserModel({
@@ -19,11 +48,8 @@ app.post('/api/users', checkUserName, (req, res) => {
   })
   
   userModel.save()
-    .then((user) => {
-      res.send({
-        username: user.username,
-        _id: user._id
-      });
+    .then((data) => {
+      res.send(new UserDTO(data));
     })
     .catch((err) => {
       console.log(err);
@@ -32,40 +58,59 @@ app.post('/api/users', checkUserName, (req, res) => {
 
 const checkExerciseValues = (req, res, next) => {
   const { _id } = req.params;
-  const { description } = req.body;
+  const { description, date } = req.body;
   const duration = parseInt(req.body.duration);
-  const error = { error: ''};
+  const error = { msg: []};
 
-  if (!_id || !description || !duration) {
-    if (!_id) {
-      error.error = '_id is required!'
-    } else if (!description) {
-      error.error = 'description is required!';
-    } else if (!duration) {
-      error.error = 'duration is required or greather than 0';
+  if (!_id) error.msg.push('_id is required!');
+  if (!description) error.msg.push('description is required!');
+  if (!duration) error.msg.push('duration is required or greather than 0');
+
+  if (date) {
+    const parsedDate = convertDateStringFormatToDate(date);
+    if (!parsedDate || parsedDate && parsedDate.toString() === 'Invalid Date') {
+      error.msg.push('Invalid date');
     }
+  }
+
+  if (error.msg.length > 0) {
     res.status(StatusCodes.BAD_REQUEST).send(error);
     return;
   }
-
+  
   next();
+
 }
 
 app.post('/api/users/:_id/exercises', checkExerciseValues, async (req, res) => {
 
   const { _id } = req.params;
-  const { description } = req.body;
+  const { description, date } = req.body;
   const duration = parseInt(req.body.duration); 
   
-  const exercise = ExerciseModel({
+  const convertedDate = convertDateStringFormatToDate(date)
+
+  const exerciseObj = {
+    user_id: _id,
     description: description,
-    duration: duration,
-    user: _id,
-  })
+    duration: duration
+  }
 
-  const doc = await exercise.save()
+  if (convertedDate) {
+    exerciseObj.date = convertedDate;
+  } 
 
-  res.status(StatusCodes.CREATED).send(doc);
+  const exercise = ExerciseModel(exerciseObj);
+  
+  const doc = await exercise.save();
+  const data = await ExerciseModel.findById(doc._id)
+    .populate({
+      path: 'user',
+      select: 'username'
+    })
+    .exec();
+
+  res.status(StatusCodes.CREATED).send(new UserExerciseDTO(data));
 })
 
 const checkIfTheUserExists = async (req, res, next) => {
@@ -91,20 +136,37 @@ const checkIfTheUserExists = async (req, res, next) => {
   next();
 }
 
-app.get('/api/users/:_id/logs', checkIfTheUserExists, async (req, res) => {
-  const userId = req.params._id;
-
-  const logs = await UserModel
-  .findById(userId)
-  .populate('count')
-  .populate({ path: 'log', select: 'description duration date -_id -user' })
-  .select({ username: true })
-  .exec();
-
-  const response = logs.toObject();
-  delete response.id;
+const getMatchDateObject = (initialDate, finalDate) => {
   
-  res.send(response);
+  const match = { 
+    date: {}
+  };
+
+  if (initialDate) match.date['$gte'] = initialDate;
+  if (finalDate) match.date['$lte'] = finalDate;
+
+  return (initialDate || finalDate) ? match : {};
+}
+
+app.get('/api/users/:_id/logs/:fromDate?/:toDate?/:limit?', checkIfTheUserExists, async (req, res) => {
+  const userId = req.params._id;
+  const { fromDate, toDate, limit } = req.params;
+  const logsLimit = Number(limit);
+  
+  const match = getMatchDateObject(convertDateStringFormatToDate(fromDate), convertDateStringFormatToDate(toDate));
+
+  const data = await UserModel
+    .findById(userId)
+    .populate({ 
+      path: 'log', 
+      select: 'description duration date -_id -user_id', 
+      options: { limit: logsLimit },
+      match: match
+    })
+    .select({ username: true })
+    .exec();
+ 
+  res.send(new UserExerciseLogsDTO(data));
 });
 
 module.exports = app;

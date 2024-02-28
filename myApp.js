@@ -32,16 +32,6 @@ const convertDateStringFormatToDate = (str) => {
   return new Date(match[0]);
 }
 
-app.get('/delete', async (req, res) => {
-
-  const exerRes = await ExerciseModel.deleteMany();
-  const userRes = await UserModel.deleteMany();
-
-  res.send({
-    msg: `Deleted ${userRes.deletedCount} Users and ${exerRes.deletedCount} Exercises`
-  })
-})
-
 app.get('/api/users', (req, res) => {
   UserModel.find()
     .then((data) => {

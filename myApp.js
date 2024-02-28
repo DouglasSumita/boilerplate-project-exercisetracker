@@ -42,6 +42,19 @@ app.get('/delete', async (req, res) => {
   })
 })
 
+app.get('/api/users', (req, res) => {
+  UserModel.find()
+    .then((data) => {
+      res.status(StatusCodes.OK)
+        .send(data.map((user) => new UserDTO(user)));
+    })
+    .catch((err) => {
+      console.log(err);
+      res.status(StatusCodes.INTERNAL_SERVER_ERROR)
+        .send(err);
+    })
+})
+
 app.post('/api/users', checkUserName, (req, res) => {
   const userModel = new UserModel({
     username: req.body.username
@@ -49,7 +62,7 @@ app.post('/api/users', checkUserName, (req, res) => {
   
   userModel.save()
     .then((data) => {
-      res.send(new UserDTO(data));
+      res.status(StatusCodes.CREATED).send(new UserDTO(data));
     })
     .catch((err) => {
       console.log(err);

@@ -151,19 +151,19 @@ const getMatchDateObject = (initialDate, finalDate) => {
   return (initialDate || finalDate) ? match : {};
 }
 
-app.get('/api/users/:_id/logs/:fromDate?/:toDate?/:limit?', checkIfTheUserExists, async (req, res) => {
+app.get('/api/users/:_id/logs', checkIfTheUserExists, async (req, res) => {
   const userId = req.params._id;
-  const { fromDate, toDate, limit } = req.params;
-  const logsLimit = Number(limit);
+  const { from, to } = req.query;
+  const limit = Number(req.query.limit);
   
-  const match = getMatchDateObject(convertDateStringFormatToDate(fromDate), convertDateStringFormatToDate(toDate));
+  const match = getMatchDateObject(convertDateStringFormatToDate(from), convertDateStringFormatToDate(to));
 
   const data = await UserModel
     .findById(userId)
     .populate({ 
       path: 'log', 
       select: 'description duration date -_id -user_id', 
-      options: { limit: logsLimit },
+      options: { limit: limit },
       match: match
     })
     .select({ username: true })
